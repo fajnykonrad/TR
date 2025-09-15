@@ -1,30 +1,29 @@
-########################
-##### DATA READING #####
-########################
 
 import pandas as pd
 import random
 import numpy as np
 import networkx as nx
+
+########################
+##### DATA READING #####
+########################
+
+
 ### CONSTANTS ###
 
-#max time for the line (hours)
-max_time = 6
-#minimum amount of cities in a line
-min_cities = 3
-#train speed (km/h)
-speed = 300
-#minutes spent at each stop (minutes converted to hours)
-stop_time = 5/60.0
-#maximum amount of lines
-max_lines = 20
+max_time = 6 #max time for the line (hours)
+min_cities = 3 #minimum amount of cities in a line
+speed = 300 #train speed (km/h)
+stop_time = 5.0/60.0 #minutes spent at each stop (minutes converted to hours)
+transfer_time = 15.0/60.0 #minutes spent at each transfer (minutes converted to hours)
+max_lines = 20 #maximum amount of lines
 
-# Distances in between cities
-adj_matrix = pd.read_excel("city_distance_matrix.xlsx", index_col=0)
-# Demand between cities
-dem_matrix = pd.read_excel("city_demand_matrix.xlsx", index_col = 0)
+### SPREADSHEETS ###
+adj_matrix = pd.read_excel("city_distance_matrix.xlsx", index_col = 0) # Distances in between cities
+dem_matrix = pd.read_excel("city_demand_matrix.xlsx", index_col = 0) # Demand between cities
 
-edges = []
+
+edges = [] # Graph of connecting cities
 
 ## Create a list of all rail tracks
 
@@ -41,61 +40,39 @@ for i, c1 in enumerate(adj_matrix.index):
 ######################
 
 def evaluate_lines(lines):
-    
+    #Graph of all the routes
     G = nx.Graph()
-    for line in lines:
+    for line_id, line in enumerate(lines):
         for i in range(len(line)-1):
             c1, c2 = line[i], line[i+1]
             dist = adj_matrix.loc[c1, c2]
-            if dist > 0:
-                G.add_edge(c1, c2, weight=dist)
+            G.add_edge(c1, c2, weight=dist, line_id = line_id)
+
     
-    total_weighted_time = 0.0
-    total_penalty = 0.0
-    covered_cities = set()
 
-    all_cities = set(adj_matrix.index)
-    
-    for c1 in all_cities:
-        for c2 in all_cities:
-            if c1 == c2:
-                continue
-            demand = demand_matrix.loc[c1, c2]
-            
-            try:
-                # Compute shortest path distance using the graph
-                shortest_dist = nx.shortest_path_length(G, source=c1, target=c2, weight='weight')
-                travel_time = shortest_dist / speed
-                total_weighted_time += travel_time * demand
 
-            except nx.NetworkXNoPath:
-                # No path exists between c1 and c2 -> heavy penalty
-                total_penalty += 24.0  # 24-hour penalty per disconnected pair
-    
-    for line in lines:
-        line_time = 0.0
-        for i in range(len(line)-1):
-            dist = adj_matrix.loc[line[i], line[i+1]]
-            travel_time = dist / speed
-            if i > 0:
-                travel_time += stop_time
-            line_time += travel_time
-        if line_time > max_time:
-            total_penalty += 24.0  # 24-hour penalty
-            
-    # 5️⃣ Penalize duplicate lines
-    unique_lines = {tuple(line) for line in lines}
-    duplicates = len(lines) - len(unique_lines)
-    total_penalty += duplicates * 24.0
+POP_SIZE = 30        # number of candidate solutions
+N_GENERATIONS = 50   # iterations
+MUTATION_RATE = 0.2  
+TOURNAMENT_SIZE = 3
 
-    # 6️⃣ Fitness = weighted travel time minus total penalties
-    fitness = total_weighted_time - total_penalty
-    return fitness
+def generate_candidate():
+    return [generate_random_line() for _ in range(max_lines)]
 
-##############################
-##### GENETIC ALGORITHM ######
-##############################
+def crossover(parent1, parent2):
+    cut = random.randint(1, max_lines-1)
+    child = parent1[:cut] + parent2[cut:]
+    return child
 
+def mutate(candidate):
+    if random.random() < MUTATION_RATE:
+        idx = random.randint(0, len(candidate)-1)
+        candidate[idx] = generate_random_line()
+    return candidate
+
+def tournament_selection(population, fitnesses):
+    competitors = random.sample(list(zip(population, fitnesses)), TOURNAMENT_SIZE)
+    return max(competitors, key=lambda x: x[1])[0]
 
 
 ### GENERATION ALGORITHM ###
@@ -108,12 +85,15 @@ def generate_random_line():
     
     while True:
         current_city = line[-1]
+
         # Find neighbors with valid tracks
-        neighbors = [
-            (city, adj_matrix.loc[current_city, city])
-            for city in cities if city not in line
-        ]
-        neighbors = [(city, dist) for city, dist in neighbors if dist > 0]
+        neighbors = []
+        for city in cities:
+            if city not in line:
+                dist = adj_matrix.loc[current_city, city]
+                #Check if there is a track between the cities
+                if dist > 0:
+                    neighbors.append((city, dist))
         
         if not neighbors:
             break  # dead end
@@ -122,9 +102,10 @@ def generate_random_line():
         random.shuffle(neighbors)
         extended = False
         
+        #Check if the city can be added to the route (Doesn't exceed the time limit)
         for city, dist in neighbors:
             travel_time = dist / speed
-            stops = (len(line) - 1) * (stop_time)  # dwell per stop (excluding start and end)
+            stops = (len(line) - 1) * (stop_time) 
             new_total_time = total_time + travel_time + stops
             if new_total_time <= max_time:
                 line.append(city)
@@ -133,12 +114,13 @@ def generate_random_line():
                 break
         
         if not extended:
-            break
+            break # line has reached maximum size
         
         # Random chance to stop early
         if len(line) >= min_cities and random.random() < 0.3:
             break
 
+    #Make sure line is not a connection of only 2 cities
     if(len(line) < min_cities):
         return generate_random_line()
     else: 
@@ -152,3 +134,41 @@ def generate_lines():
     return evaluate_lines(lines)
 
 
+
+##############################
+##### GENETIC ALGORITHM ######
+##############################
+
+def ga():
+    # 1. Initialize
+    population = [generate_candidate() for _ in range(POP_SIZE)]
+    
+    for gen in range(N_GENERATIONS):
+        # 2. Evaluate
+        fitnesses = [evaluate_lines(cand) for cand in population]
+        
+        # Track progress
+        best_idx = np.argmax(fitnesses)
+        print(f"Gen {gen}: best fitness = {fitnesses[best_idx]}")
+        
+        # 3. Next generation
+        new_population = []
+        for _ in range(POP_SIZE):
+            # Selection
+            parent1 = tournament_selection(population, fitnesses)
+            parent2 = tournament_selection(population, fitnesses)
+            # Crossover + Mutation
+            child = crossover(parent1, parent2)
+            child = mutate(child)
+            new_population.append(child)
+        
+        population = new_population
+    
+    # Final best solution
+    fitnesses = [evaluate_lines(cand) for cand in population]
+    best_idx = np.argmax(fitnesses)
+    return population[best_idx], fitnesses[best_idx]
+
+best_plan, best_score = ga()
+print("Best solution found:", best_plan)
+print("Fitness:", best_score)

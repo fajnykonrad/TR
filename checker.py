@@ -3,6 +3,9 @@ import pandas as pd
 import random
 import numpy as np
 import networkx as nx
+import heapq
+from collections import defaultdict
+from joblib import Parallel, delayed
 
 ########################
 ##### DATA READING #####
@@ -17,6 +20,7 @@ speed = 300 #train speed (km/h)
 stop_time = 5.0/60.0 #minutes spent at each stop (minutes converted to hours)
 transfer_time = 15.0/60.0 #minutes spent at each transfer (minutes converted to hours)
 max_lines = 20 #maximum amount of lines
+unconnected_penalty = 100 #penalty for two cities being not connected
 
 ### SPREADSHEETS ###
 adj_matrix = pd.read_excel("city_distance_matrix.xlsx", index_col = 0) # Distances in between cities
@@ -38,17 +42,68 @@ for i, c1 in enumerate(adj_matrix.index):
 ######################
 ##### EVALUATION #####
 ######################
+def dijkstra(origin, graph):
+    dist = {city: [] for city in graph}
+
+    pq = [(0, origin, [origin], None)] # Priority queue with time, current city, the path to get there &  what line it's on
+    while pq:
+        time, city, path, line_id = heapq.heappop(pq)
+        
+        if not dist[city] or abs(time - dist[city][0][0]) <= transfer_time - stop_time:
+            dist[city].append((time, path, line_id))
+
+            #Add all neighbors
+            for neighbor, travel_time, track_line in graph[city]:
+                new_time = time + travel_time
+                new_path = path + [neighbor]
+                
+                if line_id != None and line_id != track_line:
+                    new_time += transfer_time
+                elif line_id == track_line:
+                    new_time += stop_time
+                
+                heapq.heappush(pq, (new_time, neighbor, new_path, track_line))
+
+    return dist
+                
+
 
 def evaluate_lines(lines):
+    
+    cities = adj_matrix.index
+    total = 0
     #Graph of all the routes
-    G = nx.Graph()
+    G = {}  #city, travel_time, line_id
+    for city in cities:
+        G[city] = []
     for line_id, line in enumerate(lines):
         for i in range(len(line)-1):
             c1, c2 = line[i], line[i+1]
             dist = adj_matrix.loc[c1, c2]
-            G.add_edge(c1, c2, weight=dist, line_id = line_id)
+            time = dist / speed
 
+            if c1 not in G:
+                G[c1] = []
+            if c2 not in G:
+                G[c2] = []
+
+            G[c1].append((c2, time, line_id)) 
+            G[c2].append((c1, time, line_id))
     
+    for origin_city in cities:
+        best_times = dijkstra(origin_city, G)
+        for destination in best_times:
+            demand_to_dest = dem_matrix.loc[origin_city, destination]
+            possible_routes = best_times[destination]
+            if not possible_routes:
+                total += unconnected_penalty * demand_to_dest
+                continue
+            
+            min_time = min(possible_routes)[0]
+            total += min_time * demand_to_dest
+
+    return total
+
 
 
 POP_SIZE = 30        # number of candidate solutions
@@ -72,7 +127,7 @@ def mutate(candidate):
 
 def tournament_selection(population, fitnesses):
     competitors = random.sample(list(zip(population, fitnesses)), TOURNAMENT_SIZE)
-    return max(competitors, key=lambda x: x[1])[0]
+    return min(competitors, key=lambda x: x[1])[0]
 
 
 ### GENERATION ALGORITHM ###
@@ -131,7 +186,7 @@ def generate_lines():
     for _ in range(20):
         line = generate_random_line()
         lines.append(line)
-    return evaluate_lines(lines)
+    return lines
 
 
 
@@ -140,18 +195,20 @@ def generate_lines():
 ##############################
 
 def ga():
-    # 1. Initialize
-    population = [generate_candidate() for _ in range(POP_SIZE)]
+    # Create base population
+    population = [generate_lines() for _ in range(POP_SIZE)]
     
     for gen in range(N_GENERATIONS):
-        # 2. Evaluate
-        fitnesses = [evaluate_lines(cand) for cand in population]
+        # Evaluation
+        fitnesses = Parallel(n_jobs=-1)(
+            delayed(evaluate_lines)(cand) for cand in population
+        )
         
-        # Track progress
-        best_idx = np.argmax(fitnesses)
+        # Tracking
+        best_idx = np.argmin(fitnesses)
         print(f"Gen {gen}: best fitness = {fitnesses[best_idx]}")
         
-        # 3. Next generation
+        # New population generation
         new_population = []
         for _ in range(POP_SIZE):
             # Selection
@@ -165,10 +222,15 @@ def ga():
         population = new_population
     
     # Final best solution
-    fitnesses = [evaluate_lines(cand) for cand in population]
-    best_idx = np.argmax(fitnesses)
+    fitnesses = Parallel(n_jobs=-1)(
+        delayed(evaluate_lines)(cand) for cand in population
+    )   
+    best_idx = np.argmin(fitnesses)
+    print(f"BEST FITNESS TOTAL: {fitnesses[best_idx]}")
+    for line in population[best_idx]:
+        print(line)
+        print("\n")
     return population[best_idx], fitnesses[best_idx]
 
-best_plan, best_score = ga()
-print("Best solution found:", best_plan)
-print("Fitness:", best_score)
+
+ga()

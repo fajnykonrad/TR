@@ -18,8 +18,8 @@ max_time = 6 #max time for the line (hours)
 min_cities = 3 #minimum amount of cities in a line
 speed = 300 #train speed (km/h)
 stop_time = 5.0/60.0 #minutes spent at each stop (minutes converted to hours)
-transfer_time = 15.0/60.0 #minutes spent at each transfer (minutes converted to hours)
-max_lines = 20 #maximum amount of lines
+transfer_time = 30.0/60.0 #minutes spent at each transfer (minutes converted to hours)
+max_lines = 12 #maximum amount of lines
 unconnected_penalty = 100 #penalty for two cities being not connected
 
 ### SPREADSHEETS ###
@@ -106,10 +106,11 @@ def evaluate_lines(lines):
 
 
 
-POP_SIZE = 30        # number of candidate solutions
-N_GENERATIONS = 50   # iterations
-MUTATION_RATE = 0.2  
-TOURNAMENT_SIZE = 3
+POP_SIZE = 100        # number of candidate solutions
+N_GENERATIONS = 200   # iterations
+MUTATION_RATE = 0.3  
+TOURNAMENT_SIZE = 4
+ELITE_POPULATION = 3  # number of elite candidates to carry over unchanged
 
 def generate_candidate():
     return [generate_random_line() for _ in range(max_lines)]
@@ -183,7 +184,7 @@ def generate_random_line():
     
 def generate_lines():
     lines = []
-    for _ in range(20):
+    for _ in range(max_lines):
         line = generate_random_line()
         lines.append(line)
     return lines
@@ -197,6 +198,9 @@ def generate_lines():
 def ga():
     # Create base population
     population = [generate_lines() for _ in range(POP_SIZE)]
+    best_solution = None
+    best_fitness = float('inf')
+
     
     for gen in range(N_GENERATIONS):
         # Evaluation
@@ -205,12 +209,17 @@ def ga():
         )
         
         # Tracking
-        best_idx = np.argmin(fitnesses)
-        print(f"Gen {gen}: best fitness = {fitnesses[best_idx]}")
-        
+        current_best_idx = np.argmin(fitnesses)
+        if fitnesses[current_best_idx] < best_fitness:
+            best_fitness = fitnesses[current_best_idx]
+            best_solution = population[current_best_idx]
+        print(f"Gen {gen}: best fitness = {fitnesses[current_best_idx]}")
+
+        # Elitism - carry over the best candidates unchanged
+        elites = np.argsort(fitnesses)[:ELITE_POPULATION]
         # New population generation
-        new_population = []
-        for _ in range(POP_SIZE):
+        new_population = [population[i] for i in elites]
+        for _ in range(POP_SIZE - ELITE_POPULATION):
             # Selection
             parent1 = tournament_selection(population, fitnesses)
             parent2 = tournament_selection(population, fitnesses)

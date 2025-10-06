@@ -20,7 +20,7 @@ speed = 300 #train speed (km/h)
 stop_time = 5.0/60.0 #minutes spent at each stop (minutes converted to hours)
 transfer_time = 30.0/60.0 #minutes spent at each transfer (minutes converted to hours)
 max_lines = 12 #maximum amount of lines
-unconnected_penalty = 100 #penalty for two cities being not connected
+unconnected_penalty = 72 #penalty for two cities being not connected
 
 ### GENETIC PARAMETERS ###
 
@@ -211,7 +211,7 @@ def ga():
         fitnesses = Parallel(n_jobs=-1)(
             delayed(evaluate_lines)(cand) for cand in population
         )
-        
+        fitness_history = []
         # Tracking
         current_best_idx = np.argmin(fitnesses)
         if fitnesses[current_best_idx] < best_fitness:
@@ -219,9 +219,9 @@ def ga():
             best_solution = population[current_best_idx]
         print(f"Gen {gen}: best fitness = {fitnesses[current_best_idx]}")
 
-        # Elitism - carry over the best candidates unchanged
+        # Elitism
         elites = np.argsort(fitnesses)[:ELITE_POPULATION]
-        # New population generation
+        # New population generation with elites included
         new_population = [population[i] for i in elites]
         for _ in range(POP_SIZE - ELITE_POPULATION):
             # Selection
@@ -233,6 +233,7 @@ def ga():
             new_population.append(child)
         
         population = new_population
+        fitness_history.append(fitnesses[current_best_idx])
     
     # Final best solution
     fitnesses = Parallel(n_jobs=-1)(
@@ -243,7 +244,22 @@ def ga():
     for line in population[best_idx]:
         print(line)
         print("\n")
-    return population[best_idx], fitnesses[best_idx]
+    return fitness_history, population[best_idx], fitnesses[best_idx]
 
 
-ga()
+def run_ga():
+    runs = {}
+    networks = []
+    for run in range (5):
+        print(f"RUN {run+1} ########################")
+        fitness_history, best_network, best_fitness = ga()
+        runs[f"Run {run}"] = (fitness_history)
+        networks.append(best_network)
+    
+    df = pd.DataFrame(runs)
+    df.index.name = "Generation"
+
+    df.to_excel("genetic_algorithm_results.xlsx", index=True)
+    print("Results saved to 'genetic_algorithm_results.xlsx'.")
+
+run_ga()

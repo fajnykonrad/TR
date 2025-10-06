@@ -7,11 +7,10 @@ from collections import defaultdict
 from joblib import Parallel, delayed
 
 # ACO PARAMETERS
-num_ants = 50             # number of ants per iteration
-num_iterations = 50      # number of iterations
-pher_multi = 2.0          # pheromone multiplier
+num_ants = 50             # number of ants per generation
+num_generations = 100      # number of generations
 evap_rate = 0.1           # evaporation rate
-pher_dep = 10            # pheromone deposit multiplier
+pher_dep = 1e9            # pheromone deposit multiplier
 PHEROMONE_MAX = 5.0
 PHEROMONE_MIN = 0.01
 ### CONSTANTS ###
@@ -22,7 +21,7 @@ speed = 300                 #train speed (km/h)
 stop_time = 5.0/60.0        #minutes spent at each stop (minutes converted to hours)
 transfer_time = 30.0/60.0   #minutes spent at each transfer (minutes converted to hours)
 max_lines = 12              #maximum amount of lines
-unconnected_penalty = 100   #penalty for two cities being not connected
+unconnected_penalty = 72   #penalty for two cities being not connected
 
 ### SPREADSHEETS ###
 adj_matrix = pd.read_excel("city_distance_matrix.xlsx", index_col = 0)  # Distances in between cities
@@ -162,8 +161,8 @@ def construct_ant():
 def aco():
     best_network = None
     best_fitness = float('inf')
-
-    for iteration in range(num_iterations):
+    fitness_history = []
+    for iteration in range(num_generations):
         ant_networks = [construct_ant() for _ in range(num_ants)]
         fitnesses = Parallel(n_jobs=-1)(
             delayed(evaluate_lines)(network) for network in ant_networks
@@ -203,17 +202,24 @@ def aco():
                     pheromone[c_to_i[c2]][c_to_i[c1]] += deposit
 
         pheromone[:] = np.clip(pheromone, PHEROMONE_MIN, PHEROMONE_MAX) #MIN-MAX ACO
-
+        
         if stagnation > 20:
             pheromone[:] = np.ones((num_cities, num_cities))
             stagnation = 0
+        fitness_history.append(iteration_best_fit)
+    return fitness_history, best_network, best_fitness
 
-    print("BEST NETWORK FOUND:")
-    for line in best_network:
-        print(line)
-        print("\n")
+def run_aco():
+    runs = {}
+    for run in range (5):
+        print(f"RUN {run+1} ########################")
+        fitness_history, best_network, best_fitness = aco()
+        runs[f"Run {run}"] = (fitness_history)
     
-    print("BEST FITNESS TOTAL:", best_fitness)
-    return best_network, best_fitness
+    df = pd.DataFrame(runs)
+    df.index.name = "Generation"
 
-aco()
+    df.to_excel("aco_results.xlsx", index=True)
+    print("Results saved to 'aco_results.xlsx'.")
+
+run_aco()

@@ -1,0 +1,35 @@
+Best fitness network:
+['BAR', 'MAD', 'LIS', 'POR']
+
+
+['NED', 'BEL', 'PAR', 'LYO', 'TOR', 'MIL']
+
+
+['MUN', 'NUR', 'BER', 'HAN', 'HAM', 'BRE']
+
+
+['NAN', 'BOR', 'PAR', 'FRA', 'STU']
+
+
+['TOU', 'BOR', 'LYO', 'STU', 'NUR']
+
+
+['RUH', 'NED', 'BRE', 'HAN', 'FRA', 'STU', 'MUN']
+
+
+['MAD', 'BIL', 'BOR', 'PAR', 'BEL']
+
+
+['PAR', 'BEL', 'DUS', 'KOL', 'FRA', 'BER']
+
+
+['POR', 'BIL', 'TOU', 'BAR']
+
+
+['DUS', 'BEL', 'PAR', 'LYO', 'BAR']
+
+
+['MAR', 'TOR', 'MIL', 'ROM', 'NAP']
+
+
+['SEV', 'MAD', 'VAL', 'BAR', 'MAR']

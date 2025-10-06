@@ -204,14 +204,14 @@ def ga():
     population = [generate_lines() for _ in range(POP_SIZE)]
     best_solution = None
     best_fitness = float('inf')
-
+    fitness_history = []
     
     for gen in range(N_GENERATIONS):
         # Evaluation
         fitnesses = Parallel(n_jobs=-1)(
             delayed(evaluate_lines)(cand) for cand in population
         )
-        fitness_history = []
+        
         # Tracking
         current_best_idx = np.argmin(fitnesses)
         if fitnesses[current_best_idx] < best_fitness:

@@ -8,9 +8,8 @@ from joblib import Parallel, delayed
 
 # ACO PARAMETERS
 num_ants = 50             # number of ants per iteration
-num_iterations = 200      # number of iterations
-pher_multi = 1.0          # pheromone multiplier
-heur_multi = 2.5          # heuristic multiplier
+num_iterations = 50      # number of iterations
+pher_multi = 2.0          # pheromone multiplier
 evap_rate = 0.1           # evaporation rate
 pher_dep = 10            # pheromone deposit multiplier
 PHEROMONE_MAX = 5.0
@@ -32,8 +31,8 @@ dem_matrix = pd.read_excel("city_demand_matrix.xlsx", index_col = 0)    # Demand
 cities = list(adj_matrix.index)
 num_cities = len(cities)
 c_to_i = {city: idx for idx, city in enumerate(cities)}
+
 edges = []                                                      # Graph of connecting cities
-heuristic = np.zeros((num_cities, num_cities), dtype=float)     # Heuristic matrix
 pheromone = np.ones((num_cities, num_cities), dtype=float)      # Pheromone matrix
 
 ## Create a list of all rail tracks
@@ -44,9 +43,7 @@ for i, c1 in enumerate(adj_matrix.index):
         dist = adj_matrix.loc[c1, c2]
         if dist > 0:
             edges.append((c1, c2, dist))
-            heur_value = 1/(dist/speed)
-            heuristic[c_to_i[c1]][c_to_i[c2]] = heur_value
-            heuristic[c_to_i[c2]][c_to_i[c1]] = heur_value
+            
 
 
 
@@ -144,9 +141,8 @@ def construct_ant():
             probs = []
             candidate_cities = []
             for next_city, _ in neighbors:
-                pher = pheromone[c_to_i[c1]][c_to_i[next_city]] ** pher_multi
-                heur = heuristic[c_to_i[c1]][c_to_i[next_city]] ** heur_multi
-                probs.append(pher * heur)
+                pher = pheromone[c_to_i[c1]][c_to_i[next_city]]
+                probs.append(pher)
                 candidate_cities.append(next_city)
             probs = np.array(probs) / sum(probs)
             c2 = np.random.choice(candidate_cities, p=probs)
@@ -155,9 +151,6 @@ def construct_ant():
             total_time += travel_time
             c1 = c2
 
-            # Random stop chance
-            if len(line) >= min_cities and random.random() < 0.3:
-                break
         if len(line) >= min_cities:
             lines.append(line)
     return lines
@@ -209,13 +202,17 @@ def aco():
                     pheromone[c_to_i[c1]][c_to_i[c2]] += deposit
                     pheromone[c_to_i[c2]][c_to_i[c1]] += deposit
 
-        pheromone[:] = np.clip(pheromone, PHEROMONE_MIN, PHEROMONE_MAX)
+        pheromone[:] = np.clip(pheromone, PHEROMONE_MIN, PHEROMONE_MAX) #MIN-MAX ACO
 
         if stagnation > 20:
             pheromone[:] = np.ones((num_cities, num_cities))
             stagnation = 0
 
-    print("BEST NETWORK FOUND:", best_network)
+    print("BEST NETWORK FOUND:")
+    for line in best_network:
+        print(line)
+        print("\n")
+    
     print("BEST FITNESS TOTAL:", best_fitness)
     return best_network, best_fitness
 

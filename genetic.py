@@ -22,6 +22,14 @@ transfer_time = 30.0/60.0 #minutes spent at each transfer (minutes converted to 
 max_lines = 12 #maximum amount of lines
 unconnected_penalty = 100 #penalty for two cities being not connected
 
+### GENETIC PARAMETERS ###
+
+POP_SIZE = 100        # number of candidate solutions
+N_GENERATIONS = 200   # iterations
+MUTATION_RATE = 0.3  
+TOURNAMENT_SIZE = 4
+ELITE_POPULATION = 3  # number of elite candidates to carry over unchanged
+
 ### SPREADSHEETS ###
 adj_matrix = pd.read_excel("city_distance_matrix.xlsx", index_col = 0) # Distances in between cities
 dem_matrix = pd.read_excel("city_demand_matrix.xlsx", index_col = 0) # Demand between cities
@@ -39,9 +47,71 @@ for i, c1 in enumerate(adj_matrix.index):
         if dist > 0:
             edges.append((c1, c2, dist))
 
+############################
+### GENERATION ALGORITHM ###
+############################
+
+def generate_random_line():
+
+    cities = list(adj_matrix.index)
+    start_city = random.choice(cities)
+    line = [start_city]
+    total_time = 0.0
+    
+    while True:
+        current_city = line[-1]
+
+        # Find neighbors with valid tracks
+        neighbors = []
+        for city in cities:
+            if city not in line:
+                dist = adj_matrix.loc[current_city, city]
+                #Check if there is a track between the cities
+                if dist > 0:
+                    neighbors.append((city, dist))
+        
+        if not neighbors:
+            break  # dead end
+        
+        # Shuffle neighbors for randomness
+        random.shuffle(neighbors)
+        extended = False
+        
+        #Check if the city can be added to the route (Doesn't exceed the time limit)
+        for city, dist in neighbors:
+            travel_time = dist / speed
+            stops = (len(line) - 1) * (stop_time) 
+            new_total_time = total_time + travel_time + stops
+            if new_total_time <= max_time:
+                line.append(city)
+                total_time = new_total_time
+                extended = True
+                break
+        
+        if not extended:
+            break # line has reached maximum size
+        
+        # Random chance to stop early
+        if len(line) >= min_cities and random.random() < 0.3:
+            break
+
+    #Make sure line is not a connection of only 2 cities
+    if(len(line) < min_cities):
+        return generate_random_line()
+    else: 
+        return line
+    
+def generate_lines():
+    lines = []
+    for _ in range(max_lines):
+        line = generate_random_line()
+        lines.append(line)
+    return lines
+
 ######################
 ##### EVALUATION #####
 ######################
+
 def dijkstra(origin, graph):
     dist = {city: [] for city in graph}
 
@@ -105,12 +175,9 @@ def evaluate_lines(lines):
     return total
 
 
-
-POP_SIZE = 100        # number of candidate solutions
-N_GENERATIONS = 200   # iterations
-MUTATION_RATE = 0.3  
-TOURNAMENT_SIZE = 4
-ELITE_POPULATION = 3  # number of elite candidates to carry over unchanged
+##############################
+##### GENETIC ALGORITHM ######
+##############################
 
 def generate_candidate():
     return [generate_random_line() for _ in range(max_lines)]
@@ -131,69 +198,6 @@ def tournament_selection(population, fitnesses):
     return min(competitors, key=lambda x: x[1])[0]
 
 
-### GENERATION ALGORITHM ###
-def generate_random_line():
-
-    cities = list(adj_matrix.index)
-    start_city = random.choice(cities)
-    line = [start_city]
-    total_time = 0.0
-    
-    while True:
-        current_city = line[-1]
-
-        # Find neighbors with valid tracks
-        neighbors = []
-        for city in cities:
-            if city not in line:
-                dist = adj_matrix.loc[current_city, city]
-                #Check if there is a track between the cities
-                if dist > 0:
-                    neighbors.append((city, dist))
-        
-        if not neighbors:
-            break  # dead end
-        
-        # Shuffle neighbors for randomness
-        random.shuffle(neighbors)
-        extended = False
-        
-        #Check if the city can be added to the route (Doesn't exceed the time limit)
-        for city, dist in neighbors:
-            travel_time = dist / speed
-            stops = (len(line) - 1) * (stop_time) 
-            new_total_time = total_time + travel_time + stops
-            if new_total_time <= max_time:
-                line.append(city)
-                total_time = new_total_time
-                extended = True
-                break
-        
-        if not extended:
-            break # line has reached maximum size
-        
-        # Random chance to stop early
-        if len(line) >= min_cities and random.random() < 0.3:
-            break
-
-    #Make sure line is not a connection of only 2 cities
-    if(len(line) < min_cities):
-        return generate_random_line()
-    else: 
-        return line
-    
-def generate_lines():
-    lines = []
-    for _ in range(max_lines):
-        line = generate_random_line()
-        lines.append(line)
-    return lines
-
-
-
-##############################
-##### GENETIC ALGORITHM ######
-##############################
 
 def ga():
     # Create base population
